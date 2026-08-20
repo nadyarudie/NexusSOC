@@ -31,7 +31,7 @@ export default function App() {
   const [tenants, setTenants] = useState(initialTenants);
   const [notes, setNotes] = useState([]);
   const [apiKeys, setApiKeys] = useState({
-    abuseIpDb: '7d59bc82f35cf302b369a18288331b7e27082c3eb17ef445b2adc70c52ea00c0ab2f4f195e255151',
+    abuseIpDb: '',
     aiEngine: ''
   });
   const [userRoles, setUserRoles] = useState(() => {
