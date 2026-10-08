@@ -17,10 +17,13 @@ import IocEnrichmentView from "./components/IocEnrichmentView";
 import ChronologyView from "./components/ChronologyView";
 import AiAnalysisView from "./components/AiAnalysisView";
 import ApiConfigView from "./components/ApiConfigView";
+import AiChatBotView from "./components/AiChatBotView";
+import SettingsView from "./components/SettingsView";
 
 export default function App() {
   const [currentUser, setCurrentUser] = useState(null);
   const [activeView, setActiveView] = useState("view-dashboard");
+  const [isMobileOpen, setIsMobileOpen] = useState(false);
   const [tenants, setTenants] = useState([]);
   const [notes, setNotes] = useState([]);
   const [apiKeys, setApiKeys] = useState({
@@ -57,6 +60,15 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    const savedTheme = localStorage.getItem('nexus_theme') || 'light';
+    if (savedTheme === 'dark') {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+    }
+  }, []);
+
+  useEffect(() => {
     const savedUser = localStorage.getItem("nexus_user");
     if (savedUser) {
       setCurrentUser(JSON.parse(savedUser));
@@ -77,13 +89,10 @@ export default function App() {
 
   const handleRoleChange = (newRole) => {
     if (!currentUser) return;
-    const otherUserId = currentUser.id === "u1" ? "u2" : "u1";
-    const otherRole =
-      newRole === "Ticket Maker" ? "Report Maker" : "Ticket Maker";
 
     const newRoles = {
+      ...userRoles,
       [currentUser.id]: newRole,
-      [otherUserId]: otherRole,
     };
 
     setUserRoles(newRoles);
@@ -92,6 +101,23 @@ export default function App() {
     const updatedUser = { ...currentUser, role: newRole };
     setCurrentUser(updatedUser);
     localStorage.setItem("nexus_user", JSON.stringify(updatedUser));
+  };
+
+  const handleProfileUpdate = (updates) => {
+    if (!currentUser) return;
+    
+    // Update current user state
+    const updatedUser = { ...currentUser, ...updates };
+    setCurrentUser(updatedUser);
+    localStorage.setItem("nexus_user", JSON.stringify(updatedUser));
+
+    // Also update credentials store so changes persist across logouts
+    const savedUsers = JSON.parse(localStorage.getItem('nexus_credentials') || '{}');
+    savedUsers[currentUser.id] = { 
+      ...(savedUsers[currentUser.id] || {}), 
+      ...updates 
+    };
+    localStorage.setItem('nexus_credentials', JSON.stringify(savedUsers));
   };
 
   const renderActiveView = () => {
@@ -122,7 +148,7 @@ export default function App() {
       case "view-meantime":
         return <MeanTimeView />;
       case "view-shortcuts":
-        return <ShortcutsView />;
+        return <ShortcutsView currentUser={currentUser} />;
       case "view-notes":
         return <NotesView notes={notes} setNotes={setNotes} />;
       case "view-markdown":
@@ -131,10 +157,13 @@ export default function App() {
         return <ChronologyView notes={notes} />;
       case "view-enrichment":
         return <IocEnrichmentView notes={notes} apiKeys={apiKeys} />;
+      case "view-ai-chat": return <AiChatBotView apiKeys={apiKeys} />; 
       case "view-ai":
         return <AiAnalysisView notes={notes} />;
       case "view-apiconfig":
         return <ApiConfigView apiKeys={apiKeys} setApiKeys={setApiKeys} />;
+      case "view-settings":
+        return <SettingsView currentUser={currentUser} onRoleChange={handleRoleChange} onProfileUpdate={handleProfileUpdate} />;
       default:
         return (
           <DashboardView
@@ -163,10 +192,27 @@ export default function App() {
         currentUser={currentUser}
         onLogout={handleLogout}
         onRoleChange={handleRoleChange}
+
+        isMobileOpen={isMobileOpen}
+        setIsMobileOpen={setIsMobileOpen}
       />
-      <main className="flex-1 h-full relative overflow-hidden bg-[#fafafa]">
+      <main className="flex-1 h-full relative overflow-hidden bg-[#fafafa] flex flex-col">
+        {/* Mobile Header */}
+        <div className="lg:hidden h-14 border-b border-slate-200 bg-white flex items-center px-4 shrink-0 shadow-sm">
+          <button 
+            className="w-10 h-10 flex items-center justify-center rounded-md text-slate-600 hover:bg-slate-100 transition-colors"
+            onClick={() => setIsMobileOpen(true)}
+          >
+            <i className="fa-solid fa-bars"></i>
+          </button>
+          <div className="flex-1 text-center font-semibold text-slate-900 tracking-tight text-sm">
+            Nexus SOC
+          </div>
+          <div className="w-10 h-10"></div> {/* Spacer for centering */}
+        </div>
+
         <div
-          className="w-full h-full overflow-y-auto relative p-6 lg:p-10"
+          className="w-full flex-1 overflow-y-auto relative p-4 lg:p-10"
           id="main-scroll-area"
         >
           {renderActiveView()}

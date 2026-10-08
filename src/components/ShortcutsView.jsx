@@ -1,21 +1,30 @@
 import { useState } from 'react';
 
-export default function ShortcutsView() {
-  const shortcuts = [
-    { id: 'asoc', title: "ASOC Analyst Portal", url: "https://sites.google.com/sgu.ac.id/asoc/analyst", icon: "fa-google", type: "sites" },
-    { id: 'petra', title: "Petra", url: "https://drive.google.com/drive/folders/1sHGrjwHxF7n7GUHce4GMfndd-_xIhpnF?usp=drive_link", icon: "fa-google-drive", type: "drive" },
-    { id: 'wicida', title: "Wicida", url: "https://drive.google.com/drive/folders/1i3W-D7ssCqnWbn6oQ8By5hFzqIcK-BgU?usp=drive_link", icon: "fa-google-drive", type: "drive" },
-    { id: 'sgu', title: "SGU", url: "https://drive.google.com/drive/folders/1gLxM4VlmsheBfXVRfxHfX1XMm3f1BxT3?usp=drive_link", icon: "fa-google-drive", type: "drive" },
-    { id: 'ikmi', title: "IKMI Cirebon", url: "https://drive.google.com/drive/folders/1vFUTLITDElmtlnj9SnfEHpyFBAcabPHF?usp=drive_link", icon: "fa-google-drive", type: "drive" },
-    { id: 'pradita', title: "Pradita", url: "https://drive.google.com/drive/folders/1cGxZZfXncPcnX6gPLADQ0_I26iE8kWQP?usp=drive_link", icon: "fa-google-drive", type: "drive" },
-  ];
+const initialShortcuts = [
+  { id: 'asoc', title: "ASOC Analyst Portal", url: "https://sites.google.com/sgu.ac.id/asoc/analyst", icon: "fa-google", type: "sites", visibility: 'global' },
+  { id: 'petra', title: "Petra", url: "https://drive.google.com/drive/folders/1sHGrjwHxF7n7GUHce4GMfndd-_xIhpnF?usp=drive_link", icon: "fa-google-drive", type: "drive", visibility: 'global' },
+  { id: 'wicida', title: "Wicida", url: "https://drive.google.com/drive/folders/1i3W-D7ssCqnWbn6oQ8By5hFzqIcK-BgU?usp=drive_link", icon: "fa-google-drive", type: "drive", visibility: 'global' },
+  { id: 'sgu', title: "SGU", url: "https://drive.google.com/drive/folders/1gLxM4VlmsheBfXVRfxHfX1XMm3f1BxT3?usp=drive_link", icon: "fa-google-drive", type: "drive", visibility: 'global' },
+  { id: 'ikmi', title: "IKMI Cirebon", url: "https://drive.google.com/drive/folders/1vFUTLITDElmtlnj9SnfEHpyFBAcabPHF?usp=drive_link", icon: "fa-google-drive", type: "drive", visibility: 'global' },
+  { id: 'pradita', title: "Pradita", url: "https://drive.google.com/drive/folders/1cGxZZfXncPcnX6gPLADQ0_I26iE8kWQP?usp=drive_link", icon: "fa-google-drive", type: "drive", visibility: 'global' },
+];
 
+export default function ShortcutsView({ currentUser }) {
+  const [shortcuts, setShortcuts] = useState(initialShortcuts);
   const [reminders, setReminders] = useState([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  
   const [formData, setFormData] = useState({
     portalId: 'asoc',
     time: '',
     actionText: ''
+  });
+
+  const [addFormData, setAddFormData] = useState({
+    title: '',
+    url: '',
+    visibility: 'private'
   });
 
   const handleSaveReminder = (e) => {
@@ -25,19 +34,46 @@ export default function ShortcutsView() {
     const portal = shortcuts.find(s => s.id === formData.portalId);
     setReminders([...reminders, {
       id: Date.now(),
-      portalTitle: portal.title,
-      url: portal.url,
+      portalTitle: portal?.title || 'Unknown Portal',
+      url: portal?.url || '#',
       time: formData.time,
       actionText: formData.actionText
     }]);
     
-    setFormData({ portalId: 'asoc', time: '', actionText: '' });
+    setFormData({ portalId: shortcuts[0]?.id || '', time: '', actionText: '' });
     setIsModalOpen(false);
+  };
+
+  const handleAddShortcut = (e) => {
+    e.preventDefault();
+    if (!addFormData.title || !addFormData.url) return;
+
+    setShortcuts([...shortcuts, {
+      id: Date.now().toString(),
+      title: addFormData.title,
+      url: addFormData.url,
+      icon: "fa-link", // default icon for user added links
+      type: "custom",
+      visibility: addFormData.visibility,
+      owner: currentUser?.id
+    }]);
+
+    setAddFormData({ title: '', url: '', visibility: 'private' });
+    setIsAddModalOpen(false);
   };
 
   const deleteReminder = (id) => {
     setReminders(reminders.filter(r => r.id !== id));
   };
+
+  const deleteShortcut = (id) => {
+    setShortcuts(shortcuts.filter(s => s.id !== id));
+  };
+
+  // Filter shortcuts: show all global, plus private shortcuts belonging to current user
+  const visibleShortcuts = shortcuts.filter(s => 
+    s.visibility === 'global' || s.owner === currentUser?.id
+  );
 
   return (
     <div className="max-w-7xl mx-auto h-full flex flex-col pb-6 fade-in-no-transform">
@@ -46,11 +82,78 @@ export default function ShortcutsView() {
           <h2 className="text-2xl font-semibold text-slate-900 tracking-tight">Operations Shortcuts</h2>
           <p className="text-slate-500 text-sm mt-1">Quick access to external ASOC portals and drive folders.</p>
         </div>
-        <button onClick={() => setIsModalOpen(true)} className="btn-primary py-1.5 px-3 text-sm whitespace-nowrap shadow-sm">
-          <i className="fa-regular fa-bell mr-1.5"></i> Set Reminder
-        </button>
+        <div className="flex items-center gap-3">
+          <button onClick={() => setIsAddModalOpen(true)} className="bg-slate-100 hover:bg-slate-200 text-slate-700 py-1.5 px-3 rounded-lg text-sm font-medium transition-colors shadow-sm flex items-center">
+            <i className="fa-solid fa-plus mr-1.5"></i> Add Shortcut
+          </button>
+          <button onClick={() => setIsModalOpen(true)} className="btn-primary py-1.5 px-3 text-sm whitespace-nowrap shadow-sm flex items-center">
+            <i className="fa-regular fa-bell mr-1.5"></i> Set Reminder
+          </button>
+        </div>
       </header>
 
+      {/* Add Shortcut Modal */}
+      {isAddModalOpen && (
+        <div className="fixed inset-0 z-[9999] bg-slate-900/60 backdrop-blur-md flex items-center justify-center p-4 fade-in">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md p-6 border border-slate-100">
+            <div className="flex justify-between items-center mb-6">
+              <h3 className="text-lg font-semibold text-slate-900">Add New Shortcut</h3>
+              <button onClick={() => setIsAddModalOpen(false)} className="text-slate-400 hover:text-slate-700">
+                <i className="fa-solid fa-xmark"></i>
+              </button>
+            </div>
+            
+            <form onSubmit={handleAddShortcut} className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1.5">Title</label>
+                <input 
+                  type="text" 
+                  required
+                  placeholder="e.g., Internal Wiki"
+                  value={addFormData.title}
+                  onChange={e => setAddFormData({...addFormData, title: e.target.value})}
+                  className="w-full shadcn-input px-3 py-2 text-sm"
+                />
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1.5">URL</label>
+                <input 
+                  type="url" 
+                  required
+                  placeholder="https://..."
+                  value={addFormData.url}
+                  onChange={e => setAddFormData({...addFormData, url: e.target.value})}
+                  className="w-full shadcn-input px-3 py-2 text-sm"
+                />
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1.5">Visibility</label>
+                <select 
+                  value={addFormData.visibility}
+                  onChange={e => setAddFormData({...addFormData, visibility: e.target.value})}
+                  className="w-full shadcn-input px-3 py-2 text-sm"
+                >
+                  <option value="private">Private (Only me)</option>
+                  <option value="global">Global (Everyone)</option>
+                </select>
+              </div>
+
+              <div className="pt-4 flex justify-end gap-3 border-t border-slate-100">
+                <button type="button" onClick={() => setIsAddModalOpen(false)} className="px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 rounded-lg transition-colors">
+                  Cancel
+                </button>
+                <button type="submit" className="bg-slate-900 hover:bg-black text-white px-5 py-2 text-sm font-medium rounded-lg transition-colors shadow-sm">
+                  Save Shortcut
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Reminder Modal */}
       {isModalOpen && (
         <div className="fixed inset-0 z-[9999] bg-slate-900/60 backdrop-blur-md flex items-center justify-center p-4 fade-in">
           <div className="bg-white rounded-xl shadow-2xl w-full max-w-md p-6 border border-slate-100">
@@ -69,7 +172,7 @@ export default function ShortcutsView() {
                   onChange={e => setFormData({...formData, portalId: e.target.value})}
                   className="w-full shadcn-input px-3 py-2 text-sm"
                 >
-                  {shortcuts.map(s => <option key={s.id} value={s.id}>{s.title}</option>)}
+                  {visibleShortcuts.map(s => <option key={s.id} value={s.id}>{s.title}</option>)}
                 </select>
               </div>
               
@@ -109,25 +212,34 @@ export default function ShortcutsView() {
       )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-12 fade-in">
-        {shortcuts.map((link) => (
-          <a 
+        {visibleShortcuts.map((link) => (
+          <div 
             key={link.id} 
-            href={link.url} 
-            target="_blank" 
-            rel="noopener noreferrer"
-            className="shadcn-card p-6 flex items-center gap-4 group hover:border-slate-300 transition-colors shadow-sm"
+            className="shadcn-card p-6 flex items-center gap-4 group hover:border-slate-300 transition-colors shadow-sm relative overflow-hidden cursor-pointer"
+            onClick={() => window.open(link.url, '_blank')}
           >
-            <div className={`w-12 h-12 rounded-full flex items-center justify-center shrink-0 ${link.type === 'sites' ? 'bg-blue-50 text-blue-600' : 'bg-emerald-50 text-emerald-600'}`}>
-              <i className={`fa-brands ${link.icon} text-xl group-hover:scale-110 transition-transform`}></i>
+            {link.visibility === 'private' && (
+              <div className="absolute top-0 left-0 bg-slate-100 text-slate-500 text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-br-lg z-10">
+                Private
+              </div>
+            )}
+            
+            <button 
+              onClick={(e) => { e.stopPropagation(); deleteShortcut(link.id); }}
+              className="absolute top-2 right-2 w-6 h-6 flex items-center justify-center rounded-md text-slate-300 hover:text-red-500 hover:bg-red-50 opacity-0 group-hover:opacity-100 transition-all z-10"
+              title="Delete Shortcut"
+            >
+              <i className="fa-solid fa-trash-can text-xs"></i>
+            </button>
+
+            <div className={`w-12 h-12 rounded-full flex items-center justify-center shrink-0 ${link.type === 'sites' ? 'bg-blue-50 text-blue-600' : link.type === 'drive' ? 'bg-emerald-50 text-emerald-600' : 'bg-slate-100 text-slate-700'}`}>
+              <i className={`${link.type === 'custom' ? 'fa-solid' : 'fa-brands'} ${link.icon} text-xl group-hover:scale-110 transition-transform`}></i>
             </div>
-            <div className="overflow-hidden">
+            <div className="overflow-hidden flex-1 pr-4">
               <h3 className="text-sm font-semibold text-slate-900 truncate group-hover:text-blue-600 transition-colors">{link.title}</h3>
-              <p className="text-xs text-slate-500 truncate mt-0.5">Click to open external link</p>
+              <p className="text-xs text-slate-500 truncate mt-0.5">{link.url}</p>
             </div>
-            <div className="ml-auto text-slate-300 group-hover:text-slate-500 transition-colors">
-              <i className="fa-solid fa-arrow-up-right-from-square text-xs"></i>
-            </div>
-          </a>
+          </div>
         ))}
       </div>
 

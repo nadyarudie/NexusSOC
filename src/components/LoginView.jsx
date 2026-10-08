@@ -8,10 +8,28 @@ export default function LoginView({ onLogin }) {
   const handleSubmit = (e) => {
     e.preventDefault();
     
-    if (username === 'nadya' && password === '123') {
-      onLogin({ id: 'u1', name: 'Nadya', role: 'Senior Analyst' });
-    } else if (username === 'andrew' && password === '123') {
-      onLogin({ id: 'u2', name: 'Andrew', role: 'Security Analyst' });
+    const savedUsers = JSON.parse(localStorage.getItem('nexus_credentials') || '{}');
+    
+    // Default system users
+    const users = {
+      u1: { id: 'u1', username: 'nadya', name: 'Nadya', role: 'Senior Analyst', password: '123' },
+      u2: { id: 'u2', username: 'andrew', name: 'Andrew', role: 'Security Analyst', password: '123' }
+    };
+
+    // Merge saved profiles/credentials over defaults
+    for (const [id, data] of Object.entries(savedUsers)) {
+      if (users[id]) {
+        users[id] = { ...users[id], ...data };
+      }
+    }
+
+    const matchedUser = Object.values(users).find(
+      u => u.username.toLowerCase() === username.toLowerCase() && u.password === password
+    );
+
+    if (matchedUser) {
+      const { password: _p, ...userPayload } = matchedUser;
+      onLogin(userPayload);
     } else {
       toast.error('Invalid credentials');
     }

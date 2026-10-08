@@ -190,12 +190,12 @@ export default function NotesView({ notes, setNotes }) {
       {!viewingNote && !isFormOpen && (
         <div className="space-y-4">
           {notes.length === 0 && (
-            <div className="text-center py-12 text-slate-500 text-sm border border-dashed border-slate-300 rounded-lg bg-slate-50/50">
+            <div className="text-center py-12 text-slate-500 dark:text-slate-400 text-sm border border-dashed border-slate-300 dark:border-slate-700 rounded-lg bg-slate-50/50 dark:bg-slate-800/50">
               No notes yet. Click 'New Note' to create one.
             </div>
           )}
           {notes.length > 0 && filteredAndSortedNotes.length === 0 && (
-            <div className="text-center py-12 text-slate-500 text-sm border border-dashed border-slate-300 rounded-lg bg-slate-50/50">
+            <div className="text-center py-12 text-slate-500 dark:text-slate-400 text-sm border border-dashed border-slate-300 dark:border-slate-700 rounded-lg bg-slate-50/50 dark:bg-slate-800/50">
               No notes matching your search.
             </div>
           )}

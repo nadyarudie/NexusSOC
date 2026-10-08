@@ -33,6 +33,11 @@ export default function DashboardView({ setActiveView, currentUser }) {
   // Effect for Trend Chart
   useEffect(() => {
     let trendChartInstance = null;
+    const isDark = document.documentElement.classList.contains('dark');
+    const mainColor = isDark ? '#f8fafc' : '#0f172a';
+    const bgFill = isDark ? 'rgba(248, 250, 252, 0.1)' : 'rgba(15, 23, 42, 0.05)';
+    const gridColor = isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)';
+    const textColor = isDark ? '#cbd5e1' : '#64748b';
 
     if (trendRef.current) {
       trendChartInstance = new Chart(trendRef.current, {
@@ -42,13 +47,27 @@ export default function DashboardView({ setActiveView, currentUser }) {
           datasets: [{
             label: 'Events',
             data: [65, 59, 80, 81, 56, 55, 40],
-            borderColor: '#0f172a',
+            borderColor: mainColor,
             tension: 0.4,
             fill: true,
-            backgroundColor: 'rgba(15, 23, 42, 0.05)'
+            backgroundColor: bgFill
           }]
         },
-        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } }
+        options: { 
+          responsive: true, 
+          maintainAspectRatio: false, 
+          plugins: { legend: { display: false } },
+          scales: {
+            x: {
+              grid: { color: gridColor },
+              ticks: { color: textColor }
+            },
+            y: {
+              grid: { color: gridColor },
+              ticks: { color: textColor }
+            }
+          }
+        }
       });
     }
 
@@ -60,21 +79,24 @@ export default function DashboardView({ setActiveView, currentUser }) {
   // Effect for Distribution Chart (re-runs when distributionType changes)
   useEffect(() => {
     let orgChartInstance = null;
+    const isDark = document.documentElement.classList.contains('dark');
+    const textColor = isDark ? '#f8fafc' : '#64748b';
+    const borderColor = isDark ? '#1e293b' : '#ffffff';
     
     let chartLabels, chartData, chartColors;
     
     if (distributionType === 'tenant') {
        chartLabels = ['UI', 'ITB', 'UGM', 'IPB', 'UNAIR'];
        chartData = [300, 150, 200, 120, 80];
-       chartColors = ['#0f172a', '#334155', '#475569', '#64748b', '#94a3b8'];
+       chartColors = isDark ? ['#f8fafc', '#cbd5e1', '#94a3b8', '#64748b', '#475569'] : ['#0f172a', '#334155', '#475569', '#64748b', '#94a3b8'];
     } else if (distributionType === 'agent') {
        chartLabels = ['Agent-UI-01', 'Agent-UI-02', 'Agent-ITB-01', 'Agent-UGM-01', 'Others'];
        chartData = [150, 150, 150, 100, 300];
-       chartColors = ['#0f172a', '#1e293b', '#334155', '#475569', '#cbd5e1'];
+       chartColors = isDark ? ['#f8fafc', '#e2e8f0', '#cbd5e1', '#94a3b8', '#64748b'] : ['#0f172a', '#1e293b', '#334155', '#475569', '#cbd5e1'];
     } else if (distributionType === 'rule') {
        chartLabels = ['Failed Login', 'Malware', 'Phishing', 'DDoS', 'Policy Violation'];
        chartData = [400, 150, 120, 80, 100];
-       chartColors = ['#0f172a', '#475569', '#64748b', '#94a3b8', '#e2e8f0'];
+       chartColors = isDark ? ['#f8fafc', '#cbd5e1', '#94a3b8', '#64748b', '#475569'] : ['#0f172a', '#475569', '#64748b', '#94a3b8', '#e2e8f0'];
     }
 
     if (orgRef.current) {
@@ -85,7 +107,8 @@ export default function DashboardView({ setActiveView, currentUser }) {
           datasets: [{
             data: chartData,
             backgroundColor: chartColors,
-            borderWidth: 0
+            borderWidth: 2,
+            borderColor: borderColor
           }]
         },
         options: { 
@@ -95,7 +118,7 @@ export default function DashboardView({ setActiveView, currentUser }) {
           plugins: {
             legend: {
               position: 'right',
-              labels: { boxWidth: 10, font: { size: 10 } }
+              labels: { boxWidth: 10, font: { size: 10 }, color: textColor }
             }
           }
         }
@@ -162,16 +185,16 @@ export default function DashboardView({ setActiveView, currentUser }) {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 flex-1 min-h-0">
-        <div className="shadcn-card p-6 lg:col-span-2 flex flex-col min-h-0">
+        <div className="shadcn-card p-6 lg:col-span-2 flex flex-col">
           <div className="mb-4 flex-shrink-0">
             <h3 className="text-base font-semibold text-slate-900">Ingestion Velocity</h3>
             <p className="text-xs text-slate-500">7-Day Trend Analysis</p>
           </div>
-          <div className="flex-1 w-full relative min-h-0">
+          <div className="relative w-full h-[250px] lg:h-full lg:flex-1">
             <canvas ref={trendRef}></canvas>
           </div>
         </div>
-        <div className="shadcn-card p-6 flex flex-col min-h-0">
+        <div className="shadcn-card p-6 flex flex-col">
           <div className="mb-4 flex items-start justify-between flex-shrink-0">
             <div>
               <h3 className="text-base font-semibold text-slate-900">Distribution</h3>
@@ -187,7 +210,7 @@ export default function DashboardView({ setActiveView, currentUser }) {
               <option value="rule">By Rule</option>
             </select>
           </div>
-          <div className="flex-1 relative flex items-center justify-center min-h-0">
+          <div className="relative w-full h-[250px] lg:h-full lg:flex-1">
             <canvas ref={orgRef}></canvas>
           </div>
         </div>
