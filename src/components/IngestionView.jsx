@@ -1,6 +1,7 @@
 import { useState, useRef } from "react";
 import { toast } from "sonner";
 import * as pdfjsLib from "pdfjs-dist";
+import { supabase } from "../lib/supabase";
 import { createReportWithIoCs } from "../services/reportServices.js";
 
 // Safely resolve worker in Vite
@@ -10,7 +11,7 @@ const pdfWorker = new URL(
 ).toString();
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorker;
 
-export default function IngestionView({ tenants = [] }) {
+export default function IngestionView({ tenants = [], apiKeys = {} }) {
   const [activeTab, setActiveTab] = useState("upload");
   const [selectedFile, setSelectedFile] = useState(null);
   const [manualText, setManualText] = useState("");
@@ -27,6 +28,161 @@ export default function IngestionView({ tenants = [] }) {
   const [ruleDescription, setRuleDescription] = useState("");
   const [extractedIocs, setExtractedIocs] = useState([]);
   const [hasIngested, setHasIngested] = useState(false);
+
+  // Check ip_intel_events first; if new, query AbuseIPDB and insert into ip_intel_events
+  const resolveIocsWithGlobalDb = async (iocsList) => {
+    const ipItems = iocsList.filter((item) => item.type === "IPv4");
+    if (ipItems.length === 0) return iocsList;
+
+    const uniqueIps = Array.from(new Set(ipItems.map((i) => i.value)));
+    const knownIpsMap = new Map();
+
+    try {
+      // 1. Check existing records in global_iocs_view (backed by ip_intel_events)
+      const { data: existingRecords, error } = await supabase
+        .from("global_iocs_view")
+        .select("value, country, asn, status, abuse_score")
+        .eq("origin_table", "events")
+        .in("value", uniqueIps);
+
+      if (!error && existingRecords) {
+        existingRecords.forEach((rec) => {
+          if (rec.value && !knownIpsMap.has(rec.value)) {
+            knownIpsMap.set(rec.value, {
+              country: rec.country && rec.country !== "N/A" ? rec.country : "-",
+              asn: rec.asn && rec.asn !== "N/A" ? rec.asn : "-",
+              status: rec.status || "Malicious",
+            });
+          }
+        });
+      }
+    } catch (err) {
+      console.error("Error checking ip_intel_events:", err);
+    }
+
+    // Resolve target host name from selected Agent or Tenant for the new event row
+    const currentTenant = tenants.find(
+      (t) => t.id.toString() === selectedTenantId,
+    );
+    const currentAgent = currentTenant?.agents?.find(
+      (a) => a.id.toString() === selectedAgentId,
+    );
+    const resolvedTargetHost =
+      currentAgent?.name || currentTenant?.name || "Unknown Host";
+
+    // 2. Process each indicator: reuse existing DB data or query AbuseIPDB & insert into ip_intel_events
+    const resolvedIocs = await Promise.all(
+      iocsList.map(async (ioc) => {
+        if (ioc.type !== "IPv4") return ioc;
+
+        const ip = ioc.value;
+
+        // Private / Local IP check
+        if (
+          ip.startsWith("10.") ||
+          ip.startsWith("192.168.") ||
+          ip.startsWith("127.")
+        ) {
+          return {
+            ...ioc,
+            country: "Local",
+            asn: "-",
+            status: "Safe",
+          };
+        }
+
+        // Return existing validated data if already in ip_intel_events
+        if (knownIpsMap.has(ip)) {
+          const cached = knownIpsMap.get(ip);
+          return {
+            ...ioc,
+            country: cached.country,
+            asn: cached.asn,
+            status: cached.status,
+          };
+        }
+
+        // Otherwise, IP is new -> Query AbuseIPDB and insert into ip_intel_events
+        const abuseKey =
+          apiKeys?.abuseIpDb ||
+          import.meta.env.VITE_ABUSEIPDB_API_KEY ||
+          localStorage.getItem("abuseIpDbKey");
+
+        if (abuseKey) {
+          try {
+            const response = await fetch(
+              `/api/abuseipdb/check?ipAddress=${encodeURIComponent(ip)}&maxAgeInDays=90`,
+              {
+                headers: {
+                  Key: abuseKey,
+                  Accept: "application/json",
+                },
+              },
+            );
+            const json = await response.json();
+
+            if (response.ok && json.data) {
+              const data = json.data;
+              const score = data.abuseConfidenceScore || 0;
+              const country = data.countryCode || "N/A";
+              const asn = data.asn ? `AS${data.asn}` : data.isp || "N/A";
+              const status =
+                score >= 50 ? "Malicious" : score > 0 ? "Suspicious" : "Safe";
+              const nowIso = new Date().toISOString();
+
+              // Upsert metadata into ip_intel_cache to satisfy foreign key & store geo/score
+              await supabase.from("ip_intel_cache").upsert(
+                {
+                  ip,
+                  abuse_score: score,
+                  country_code: country,
+                  isp: data.isp || asn,
+                  reputation_source: "abuseipdb",
+                  target_hosts: [resolvedTargetHost],
+                  geo_json: {
+                    as: asn,
+                    isp: data.isp || asn,
+                    country: data.countryName || country,
+                    countryCode: country,
+                  },
+                  reputation_json: data,
+                  last_seen: nowIso,
+                },
+                { onConflict: "ip" },
+              );
+
+              // Insert new event record directly into ip_intel_events to grow the database
+              await supabase.from("ip_intel_events").insert({
+                ip,
+                seen_at: nowIso,
+                alert_type:
+                  ruleDescription || reportTitle || "AbuseIPDB Enrichment",
+                attack_subtype: data.usageType || "threat_ingestion",
+                mitre: [],
+                target_host: resolvedTargetHost,
+                endpoint: "N/A",
+                outcome: status,
+                raw_summary: `AbuseIPDB Enrichment | Score: ${score}% | ISP: ${data.isp || asn} | Total Reports: ${data.totalReports || 0}`,
+              });
+
+              return {
+                ...ioc,
+                country,
+                asn,
+                status,
+              };
+            }
+          } catch (err) {
+            console.error(`AbuseIPDB query failed for ${ip}:`, err);
+          }
+        }
+
+        return ioc;
+      }),
+    );
+
+    return resolvedIocs;
+  };
 
   const extractIocsFromText = (text, sourceTag = "Text Input") => {
     const iocs = [];
@@ -236,16 +392,20 @@ export default function IngestionView({ tenants = [] }) {
     }
   };
 
-  const handleExtraction = (e) => {
+  const handleExtraction = async (e) => {
     e.preventDefault();
+    let targetIocs = extractedIocs;
+
     if (activeTab === "manual") {
       if (!manualText.trim()) {
         toast.error("Please enter log text or an incident report.");
         return;
       }
-      const uniqueIocs = extractIocsFromText(manualText, "Pasted Text");
-      setExtractedIocs(uniqueIocs);
+      targetIocs = extractIocsFromText(manualText, "Pasted Text");
     }
+
+    const resolvedIocs = await resolveIocsWithGlobalDb(targetIocs);
+    setExtractedIocs(resolvedIocs);
 
     setHasIngested(true);
     toast.success("Extraction complete", {
@@ -304,7 +464,7 @@ export default function IngestionView({ tenants = [] }) {
   const availableAgents = selectedTenant ? selectedTenant.agents || [] : [];
 
   return (
-    <div className="max-w-4xl mx-auto flex flex-col fade-in pb-12">
+    <div className="max-w-4xl mx-auto w-full flex flex-col fade-in pb-12 overflow-x-hidden">
       <header className="mb-6 flex-shrink-0">
         <h2 className="text-2xl font-semibold text-slate-900 tracking-tight">
           Data Ingestion
@@ -534,35 +694,33 @@ export default function IngestionView({ tenants = [] }) {
 
       {hasIngested && (
         <div className="shadcn-card overflow-hidden fade-in mb-8">
-          <div className="bg-slate-50 border-b border-slate-200 px-6 py-4 flex justify-between items-center">
-            <div>
+          <div className="bg-slate-50 border-b border-slate-200 px-6 py-4 flex justify-between items-center gap-4">
+            <div className="min-w-0">
               <h3 className="text-sm font-semibold text-slate-900">
                 Extracted Indicators (IoC/IoA)
               </h3>
-              <p className="text-xs text-slate-500 mt-0.5">
+              <p className="text-xs text-slate-500 mt-0.5 truncate">
                 {extractedIocs.length > 0
                   ? "Please review the extracted indicators before saving to the Global IoC database."
                   : "No specific IoCs found. You can still save the report to the database."}
               </p>
             </div>
-            <div className="bg-blue-100 text-blue-700 text-xs font-bold px-3 py-1 rounded-full">
+            <div className="bg-blue-100 text-blue-700 text-xs font-bold px-3 py-1 rounded-full whitespace-nowrap flex-shrink-0">
               {extractedIocs.length} Found
             </div>
           </div>
 
           {extractedIocs.length > 0 && (
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-sm text-slate-600">
-                <thead className="bg-white border-b border-slate-100 text-xs uppercase font-semibold text-slate-500">
+            <div className="max-h-[420px] overflow-y-auto overflow-x-hidden">
+              <table className="w-full table-fixed text-left text-sm text-slate-600">
+                <thead className="bg-white border-b border-slate-100 text-xs uppercase font-semibold text-slate-500 sticky top-0 z-10">
                   <tr>
-                    <th className="px-6 py-3 whitespace-nowrap">Type</th>
-                    <th className="px-6 py-3 whitespace-nowrap">Value</th>
-                    <th className="px-6 py-3 whitespace-nowrap">
-                      Context Source
-                    </th>
-                    <th className="px-6 py-3 whitespace-nowrap">Country</th>
-                    <th className="px-6 py-3 whitespace-nowrap">ASN</th>
-                    <th className="px-6 py-3 whitespace-nowrap">Status</th>
+                    <th className="px-4 py-3 w-[95px]">Type</th>
+                    <th className="px-4 py-3">Value</th>
+                    <th className="px-4 py-3 w-[125px]">Context Source</th>
+                    <th className="px-4 py-3 w-[85px]">Country</th>
+                    <th className="px-4 py-3 w-[130px]">ASN</th>
+                    <th className="px-4 py-3 w-[125px]">Status</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 bg-white">
@@ -571,37 +729,60 @@ export default function IngestionView({ tenants = [] }) {
                       key={idx}
                       className="hover:bg-slate-50 transition-colors"
                     >
-                      <td className="px-6 py-3 whitespace-nowrap">
+                      <td className="px-4 py-3 align-middle whitespace-nowrap">
                         <span
-                          className={`badge ${
+                          className={`inline-flex items-center whitespace-nowrap px-2 py-0.5 rounded text-[11px] font-semibold border ${
                             ioc.type === "IPv4"
                               ? "bg-red-100 text-red-700 border-red-200"
                               : ioc.type === "URL"
                                 ? "bg-blue-100 text-blue-700 border-blue-200"
                                 : "bg-slate-100 text-slate-700 border-slate-200"
-                          } border`}
+                          }`}
                         >
                           {ioc.type}
                         </span>
                       </td>
-                      <td className="px-6 py-3 font-mono text-slate-900">
+                      <td
+                        className="px-4 py-3 align-middle font-mono text-xs text-slate-900 truncate"
+                        title={ioc.value}
+                      >
                         {ioc.value}
                       </td>
-                      <td className="px-6 py-3 text-xs text-slate-400 font-mono whitespace-nowrap">
+                      <td
+                        className="px-4 py-3 align-middle text-xs text-slate-400 font-mono truncate"
+                        title={ioc.source}
+                      >
                         {ioc.source}
                       </td>
-                      <td className="px-6 py-3 font-medium text-slate-700">
+                      <td
+                        className="px-4 py-3 align-middle font-medium text-xs text-slate-700 truncate"
+                        title={ioc.country || "-"}
+                      >
                         {ioc.country || "-"}
                       </td>
-                      <td className="px-6 py-3 font-mono text-slate-500 text-xs">
+                      <td
+                        className="px-4 py-3 align-middle font-mono text-slate-500 text-xs truncate"
+                        title={ioc.asn || "-"}
+                      >
                         {ioc.asn || "-"}
                       </td>
-                      <td className="px-6 py-3">
+                      <td className="px-4 py-3 align-middle whitespace-nowrap">
                         <span
-                          className={`badge border ${ioc.status === "Malicious" ? "bg-red-50 text-red-700 border-red-200" : "bg-green-50 text-green-700 border-green-200"}`}
+                          className={`inline-flex items-center gap-1.5 whitespace-nowrap px-2.5 py-0.5 rounded-md text-[11px] font-semibold border ${
+                            ioc.status === "Malicious"
+                              ? "bg-red-50 text-red-700 border-red-200"
+                              : ioc.status === "Suspicious"
+                                ? "bg-amber-50 text-amber-700 border-amber-200"
+                                : "bg-green-50 text-green-700 border-green-200"
+                          }`}
                         >
                           <i
-                            className={`fa-solid ${ioc.status === "Malicious" ? "fa-shield-virus" : "fa-shield-check"} mr-1.5`}
+                            className={`fa-solid ${
+                              ioc.status === "Malicious" ||
+                              ioc.status === "Suspicious"
+                                ? "fa-shield-virus"
+                                : "fa-shield-check"
+                            }`}
                           ></i>
                           {ioc.status}
                         </span>

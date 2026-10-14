@@ -220,6 +220,8 @@ export default function DashboardTenantsView({
     });
   };
 
+  const currentAgents = selectedTenant?.agents || [];
+
   return (
     <div className="max-w-7xl mx-auto block fade-in flex flex-col h-full">
       {!selectedTenant ? (
