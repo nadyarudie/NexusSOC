@@ -60,11 +60,11 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    const savedTheme = localStorage.getItem('nexus_theme') || 'light';
-    if (savedTheme === 'dark') {
-      document.documentElement.classList.add('dark');
+    const savedTheme = localStorage.getItem("nexus_theme") || "light";
+    if (savedTheme === "dark") {
+      document.documentElement.classList.add("dark");
     } else {
-      document.documentElement.classList.remove('dark');
+      document.documentElement.classList.remove("dark");
     }
   }, []);
 
@@ -105,19 +105,21 @@ export default function App() {
 
   const handleProfileUpdate = (updates) => {
     if (!currentUser) return;
-    
+
     // Update current user state
     const updatedUser = { ...currentUser, ...updates };
     setCurrentUser(updatedUser);
     localStorage.setItem("nexus_user", JSON.stringify(updatedUser));
 
     // Also update credentials store so changes persist across logouts
-    const savedUsers = JSON.parse(localStorage.getItem('nexus_credentials') || '{}');
-    savedUsers[currentUser.id] = { 
-      ...(savedUsers[currentUser.id] || {}), 
-      ...updates 
+    const savedUsers = JSON.parse(
+      localStorage.getItem("nexus_credentials") || "{}",
+    );
+    savedUsers[currentUser.id] = {
+      ...(savedUsers[currentUser.id] || {}),
+      ...updates,
     };
-    localStorage.setItem('nexus_credentials', JSON.stringify(savedUsers));
+    localStorage.setItem("nexus_credentials", JSON.stringify(savedUsers));
   };
 
   const renderActiveView = () => {
@@ -144,7 +146,13 @@ export default function App() {
       case "view-tenants":
         return <EnvironmentsView />;
       case "view-ioc":
-        return <IocDatabaseView setActiveView={setActiveView} />;
+        return (
+          <IocDatabaseView
+            apiKeys="{apiKeys}"
+            notes="{notes}"
+            setActiveView="{setActiveView}"
+          />
+        );
       case "view-meantime":
         return <MeanTimeView />;
       case "view-shortcuts":
@@ -157,13 +165,20 @@ export default function App() {
         return <ChronologyView notes={notes} />;
       case "view-enrichment":
         return <IocEnrichmentView notes={notes} apiKeys={apiKeys} />;
-      case "view-ai-chat": return <AiChatBotView apiKeys={apiKeys} />; 
+      case "view-ai-chat":
+        return <AiChatBotView apiKeys={apiKeys} />;
       case "view-ai":
         return <AiAnalysisView notes={notes} />;
       case "view-apiconfig":
         return <ApiConfigView apiKeys={apiKeys} setApiKeys={setApiKeys} />;
       case "view-settings":
-        return <SettingsView currentUser={currentUser} onRoleChange={handleRoleChange} onProfileUpdate={handleProfileUpdate} />;
+        return (
+          <SettingsView
+            currentUser={currentUser}
+            onRoleChange={handleRoleChange}
+            onProfileUpdate={handleProfileUpdate}
+          />
+        );
       default:
         return (
           <DashboardView
@@ -192,14 +207,13 @@ export default function App() {
         currentUser={currentUser}
         onLogout={handleLogout}
         onRoleChange={handleRoleChange}
-
         isMobileOpen={isMobileOpen}
         setIsMobileOpen={setIsMobileOpen}
       />
       <main className="flex-1 h-full relative overflow-hidden bg-[#fafafa] flex flex-col">
         {/* Mobile Header */}
         <div className="lg:hidden h-14 border-b border-slate-200 bg-white flex items-center px-4 shrink-0 shadow-sm">
-          <button 
+          <button
             className="w-10 h-10 flex items-center justify-center rounded-md text-slate-600 hover:bg-slate-100 transition-colors"
             onClick={() => setIsMobileOpen(true)}
           >
